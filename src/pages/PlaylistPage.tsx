@@ -169,9 +169,24 @@ export default function PlaylistPage() {
 
         {/* YouTube videos */}
         <section className="mb-10">
-          <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-white">
-            <span className="text-blue-400">▶</span> 추천 유튜브 영상
-          </h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-white">
+              <span className="text-blue-400">▶</span> 추천 유튜브 영상
+            </h2>
+            {!loading && videos.length > 0 && (
+              <button
+                onClick={() =>
+                  window.open(
+                    `https://www.youtube.com/watch_videos?video_ids=${videos.map((v) => v.videoId).join(',')}`,
+                    '_blank',
+                  )
+                }
+                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 transition-all hover:border-blue-400/50 hover:bg-blue-500/20 hover:text-blue-300"
+              >
+                ▶ 전체 재생
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             {loading
               ? Array.from({ length: 4 }).map((_, i) => <VideoSkeleton key={i} />)
