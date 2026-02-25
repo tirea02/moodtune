@@ -53,7 +53,7 @@ export default function PlaylistPage() {
   const navigate = useNavigate()
   const mood: string = state?.mood ?? ''
 
-  const { firebaseUser } = useAuth()
+  const { firebaseUser, login } = useAuth()
 
   const [tracks, setTracks] = useState<Track[]>([])
   const [videos, setVideos] = useState<Video[]>([])
@@ -64,6 +64,18 @@ export default function PlaylistPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
+  // 비로그인 클릭 → 로그인 후 자동 저장 트리거
+  const [pendingSave, setPendingSave] = useState(false)
+
+  // 로그인 완료 감지 → pendingSave true면 자동 저장
+  useEffect(() => {
+    if (firebaseUser && pendingSave && !saved && !saving) {
+      setPendingSave(false)
+      void handleSave()
+    }
+    // handleSave는 firebaseUser 취득 직후 렌더에서 최신값 보장
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firebaseUser, pendingSave])
 
   // iTunes 미리듣기 상태
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -224,7 +236,12 @@ export default function PlaylistPage() {
           {loading ? (
             <div className="w-16" />
           ) : !firebaseUser ? (
-            <span className="text-xs text-gray-600">로그인 후 저장</span>
+            <button
+              onClick={() => { setPendingSave(true); void login() }}
+              className="text-xs text-gray-400 transition-colors hover:text-violet-300"
+            >
+              로그인 후 저장
+            </button>
           ) : saved ? (
             <span className="text-xs font-medium text-violet-400">✓ 저장됨</span>
           ) : (
