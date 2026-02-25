@@ -1,3 +1,37 @@
+/** 백엔드 DB에 저장된 유저 정보 (/api/auth/login 응답) */
+export interface DbUser {
+  id: string
+  uid: string
+  email: string
+  displayName: string
+  photoURL: string | null
+}
+
+/** iTunes Search API 응답 항목 */
+export interface ItunesResult {
+  artworkUrl100: string
+  previewUrl: string | null
+  trackViewUrl: string
+  trackName: string
+  artistName: string
+  collectionName: string
+}
+
+/** GET /api/playlists/my 응답의 플레이리스트 항목 */
+export interface SavedPlaylist {
+  id: number
+  name: string
+  description: string
+  category: string
+  tags: string[]
+  tracks: unknown[]
+  videos: unknown[]
+  isPublic: boolean
+  likeCount: number
+  playCount: number
+  createdAt: string
+}
+
 export interface Track {
   id: string
   title: string

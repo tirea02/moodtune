@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import GoogleLoginButton from '../components/GoogleLoginButton'
 
 const SUGGESTIONS = [
   '🌧️ 비 오는 날 혼자',
@@ -21,6 +22,11 @@ export default function MoodInputPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
+      {/* 우상단 로그인 버튼 */}
+      <div className="absolute top-4 right-6 z-10">
+        <GoogleLoginButton />
+      </div>
+
       {/* Background glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -left-40 h-[300px] w-[300px] rounded-full bg-violet-700/20 blur-[80px] sm:-top-60 sm:-left-60 sm:h-[500px] sm:w-[500px] sm:blur-[120px]" />

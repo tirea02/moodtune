@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { analyzeMood } from '../api/gemini'
 import { searchVideos } from '../api/youtube'
-import type { Track, Video } from '../types'
+import client from '../api/client'
+import { useAuth } from '../hooks/useAuth'
+import type { Track, Video, ItunesResult } from '../types'
 
 const GENRE_COLORS: Record<string, string> = {
   'Indie Folk':  'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
@@ -46,16 +48,60 @@ function VideoSkeleton() {
   )
 }
 
+/** sessionStorage 캐시 구조 — 보안: 인증 정보 미포함, Gemini 응답 결과만 저장 */
+interface PlaylistCache {
+  analysis: string
+  tracks: Track[]
+  videos: Video[]
+}
+
 export default function PlaylistPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
   const mood: string = state?.mood ?? ''
+
+  const { firebaseUser, login } = useAuth()
 
   const [tracks, setTracks] = useState<Track[]>([])
   const [videos, setVideos] = useState<Video[]>([])
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  // 비로그인 클릭 → 로그인 후 자동 저장 트리거
+  const [pendingSave, setPendingSave] = useState(false)
+
+  // 로그인 완료 감지 → pendingSave true면 자동 저장
+  useEffect(() => {
+    if (firebaseUser && pendingSave && !saved && !saving) {
+      setPendingSave(false)
+      void handleSave()
+    }
+    // handleSave는 firebaseUser 취득 직후 렌더에서 최신값 보장
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firebaseUser, pendingSave])
+
+  // iTunes 미리듣기 상태
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null)
+  const [itunesLoading, setItunesLoading] = useState(false)
+  const [itunesResult, setItunesResult] = useState<ItunesResult | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [manualPlayNeeded, setManualPlayNeeded] = useState(false)
+  const [noPreview, setNoPreview] = useState(false)
+
+  // 페이지 이탈 시 오디오 정리
+  useEffect(() => {
+    return () => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.src = ''
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!mood) { navigate('/'); return }
@@ -64,6 +110,17 @@ export default function PlaylistPage() {
       try {
         setLoading(true)
         setError('')
+
+        // 캐시 확인 — 같은 mood로 이미 조회한 결과 있으면 재사용 (탭 닫으면 자동 삭제)
+        const cacheKey = `playlist_cache_${mood}`
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          const { analysis, tracks, videos } = JSON.parse(cached) as PlaylistCache
+          setAnalysis(analysis)
+          setTracks(tracks)
+          setVideos(videos)
+          return
+        }
 
         // 1. Gemini: 감정 분석 + 트랙 추천 + 유튜브 검색 쿼리 생성
         const geminiResult = await analyzeMood(mood)
@@ -78,6 +135,18 @@ export default function PlaylistPage() {
         // 2. YouTube: Gemini가 제안한 쿼리로 영상 검색
         const youtubeVideos = await searchVideos(geminiResult.videoQueries)
         setVideos(youtubeVideos)
+
+        // 캐시 저장 — analysis / tracks / videos만 저장 (API 키·토큰·인증 정보 미포함)
+        try {
+          const toCache: PlaylistCache = {
+            analysis: geminiResult.analysis,
+            tracks: tracksWithId,
+            videos: youtubeVideos,
+          }
+          sessionStorage.setItem(cacheKey, JSON.stringify(toCache))
+        } catch {
+          // sessionStorage 용량 초과 등 — 캐시 실패는 무시하고 정상 동작 유지
+        }
       } catch (err) {
         console.error(err)
         setError('AI 분석 중 오류가 발생했어요. 잠시 후 다시 시도해줘.')
@@ -88,6 +157,96 @@ export default function PlaylistPage() {
 
     fetchData()
   }, [mood, navigate])
+
+  /** iTunes Search API로 트랙 미리듣기 */
+  async function handleTrackClick(track: Track) {
+    if (activeTrackId === track.id) {
+      currentAudioRef.current?.pause()
+      currentAudioRef.current && (currentAudioRef.current.src = '')
+      currentAudioRef.current = null
+      setActiveTrackId(null)
+      setItunesResult(null)
+      setIsPlaying(false)
+      setNoPreview(false)
+      return
+    }
+
+    currentAudioRef.current?.pause()
+    currentAudioRef.current && (currentAudioRef.current.src = '')
+    currentAudioRef.current = null
+    setActiveTrackId(track.id)
+    setItunesLoading(true)
+    setItunesResult(null)
+    setIsPlaying(false)
+    setManualPlayNeeded(false)
+    setNoPreview(false)
+
+    try {
+      const query = encodeURIComponent(`${track.title} ${track.artist}`)
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${query}&entity=song&limit=1&country=KR`,
+      )
+      const data = (await res.json()) as { resultCount: number; results: ItunesResult[] }
+      const result = data.resultCount > 0 ? data.results[0] : null
+      setItunesLoading(false)
+
+      if (!result?.previewUrl) {
+        setNoPreview(true)
+        const q = encodeURIComponent(`${track.title} ${track.artist} lyrics`)
+        window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+        return
+      }
+
+      setItunesResult(result)
+      const audio = new Audio(result.previewUrl)
+      currentAudioRef.current = audio
+      audio.onended = () => { setIsPlaying(false); setActiveTrackId(null) }
+      setIsPlaying(true)
+      audio.play().catch(() => { setIsPlaying(false); setManualPlayNeeded(true) })
+    } catch {
+      setItunesLoading(false)
+      setActiveTrackId(null)
+    }
+  }
+
+  function handleManualPlay() {
+    currentAudioRef.current?.play().catch(() => {})
+    setIsPlaying(true)
+    setManualPlayNeeded(false)
+  }
+
+  function openYouTubeLyrics(track: Track) {
+    const q = encodeURIComponent(`${track.title} ${track.artist} lyrics`)
+    window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+  }
+
+  /**
+   * 플레이리스트 저장
+   * Gemini 결과(tracks, videos, analysis) + mood → POST /api/playlists
+   * tags: 트랙 장르 중복 제거, category: 첫 번째 트랙 장르
+   */
+  async function handleSave() {
+    if (!firebaseUser || saving || saved) return
+    try {
+      setSaving(true)
+      setSaveError('')
+      await client.post('/api/playlists', {
+        name: `${mood.slice(0, 50)} 플레이리스트`,
+        description: analysis,
+        category: tracks[0]?.genre ?? 'mixed',
+        tags: [...new Set(tracks.map((t) => t.genre))],
+        tracks,
+        videos,
+        isPublic: true,
+      })
+      setSaved(true)
+    } catch (err) {
+      console.error(err)
+      setSaveError('저장 실패. 다시 시도해줘.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -103,7 +262,27 @@ export default function PlaylistPage() {
           <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-sm font-bold text-transparent">
             moodtune
           </span>
-          <div className="w-16" />
+          {/* 저장 버튼: 로딩 중 숨김 / 비로그인 시 안내 / 로그인 시 저장 */}
+          {loading ? (
+            <div className="w-16" />
+          ) : !firebaseUser ? (
+            <button
+              onClick={() => { setPendingSave(true); void login() }}
+              className="text-xs text-gray-400 transition-colors hover:text-violet-300"
+            >
+              로그인 후 저장
+            </button>
+          ) : saved ? (
+            <span className="text-xs font-medium text-violet-400">✓ 저장됨</span>
+          ) : (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 transition-all hover:border-violet-400/50 hover:bg-violet-500/20 hover:text-violet-300 disabled:opacity-50"
+            >
+              {saving ? '저장 중...' : '저장하기'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -133,6 +312,11 @@ export default function PlaylistPage() {
             {error}
           </div>
         )}
+        {saveError && (
+          <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {saveError}
+          </div>
+        )}
 
         {/* Playlist */}
         <section className="mb-10">
@@ -142,28 +326,81 @@ export default function PlaylistPage() {
           <div className="space-y-2">
             {loading
               ? Array.from({ length: 6 }).map((_, i) => <TrackSkeleton key={i} />)
-              : tracks.map((track, idx) => (
-                  <div
-                    key={track.id}
-                    className="group flex items-center gap-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3.5 transition-all hover:border-violet-500/30 hover:bg-white/[0.08]"
-                  >
-                    <div className="w-5 shrink-0 text-center">
-                      <span className="text-xs text-gray-600 group-hover:hidden">{idx + 1}</span>
-                      <span className="hidden text-sm text-violet-400 group-hover:block">▶</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-white">{track.title}</p>
-                      <p className="truncate text-xs text-gray-500">{track.artist}</p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
-                        GENRE_COLORS[track.genre] ?? 'border-gray-400/20 bg-gray-400/10 text-gray-400'
+              : tracks.map((track, idx) => {
+                  const isActive = activeTrackId === track.id
+                  const isThisLoading = isActive && itunesLoading
+                  const isThisNoPreview = isActive && noPreview
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => void handleTrackClick(track)}
+                      className={`group flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 transition-all ${
+                        isActive
+                          ? 'border-violet-500/50 bg-violet-500/10'
+                          : 'border-white/5 bg-white/5 hover:border-violet-500/30 hover:bg-white/[0.08]'
                       }`}
                     >
-                      {track.genre}
-                    </span>
-                  </div>
-                ))}
+                      {/* 상태 아이콘 */}
+                      <div className="w-5 shrink-0 text-center">
+                        {isThisLoading ? (
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                        ) : isActive && isPlaying ? (
+                          <span className="text-sm text-violet-400">■</span>
+                        ) : isActive && manualPlayNeeded ? (
+                          <span
+                            className="text-sm text-violet-400"
+                            onClick={(e) => { e.stopPropagation(); handleManualPlay() }}
+                          >▶</span>
+                        ) : isThisNoPreview ? (
+                          <span className="text-xs text-gray-600">↗</span>
+                        ) : (
+                          <>
+                            <span className="text-xs text-gray-600 group-hover:hidden">{idx + 1}</span>
+                            <span className="hidden text-sm text-violet-400 group-hover:block">▶</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 앨범아트 — iTunes 결과 있을 때만 */}
+                      {isActive && itunesResult?.artworkUrl100 && (
+                        <img
+                          src={itunesResult.artworkUrl100}
+                          alt={itunesResult.collectionName}
+                          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        />
+                      )}
+
+                      {/* 제목 / 아티스트 / 앨범명 */}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">{track.title}</p>
+                        <p className="truncate text-xs text-gray-500">{track.artist}</p>
+                        {isActive && itunesResult?.collectionName && (
+                          <p className="mt-0.5 truncate text-xs text-gray-600">{itunesResult.collectionName}</p>
+                        )}
+                      </div>
+
+                      {/* 우측: 장르 배지 or 전체 듣기 or YouTube 링크 */}
+                      {isThisNoPreview ? (
+                        <span className="shrink-0 text-xs text-blue-400">YouTube에서 듣기 ↗</span>
+                      ) : isActive && itunesResult ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openYouTubeLyrics(track) }}
+                          className="shrink-0 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-xs text-blue-400 transition-all hover:bg-blue-500/20"
+                        >
+                          전체 듣기 ↗
+                        </button>
+                      ) : (
+                        <span
+                          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
+                            GENRE_COLORS[track.genre] ?? 'border-gray-400/20 bg-gray-400/10 text-gray-400'
+                          }`}
+                        >
+                          {track.genre}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
           </div>
         </section>
 
