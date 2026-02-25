@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import MoodInputPage from './pages/MoodInputPage'
 import PlaylistPage from './pages/PlaylistPage'
+import MyPlaylistsPage from './pages/MyPlaylistsPage'
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
           <Routes>
             <Route path="/" element={<MoodInputPage />} />
             <Route path="/playlist" element={<PlaylistPage />} />
+            <Route path="/my-playlists" element={<MyPlaylistsPage />} />
           </Routes>
         </BrowserRouter>
       </div>

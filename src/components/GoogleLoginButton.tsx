@@ -4,8 +4,9 @@
  * 상태별 렌더링:
  * - loading 중: null (깜빡임 방지)
  * - 로그인 전: "Google로 로그인" 버튼
- * - 로그인 후: 유저 아바타 + 이름 + 로그아웃 버튼
+ * - 로그인 후: 유저 아바타 + 이름 + 보관함 링크 + 로그아웃 버튼
  */
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
 export default function GoogleLoginButton() {
@@ -26,6 +27,12 @@ export default function GoogleLoginButton() {
         <span className="hidden text-sm text-gray-300 sm:block">
           {firebaseUser.displayName}
         </span>
+        <Link
+          to="/my-playlists"
+          className="text-xs text-gray-400 transition-colors hover:text-violet-300"
+        >
+          보관함
+        </Link>
         <button
           onClick={() => void logout()}
           className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 transition-all hover:border-white/20 hover:text-white"

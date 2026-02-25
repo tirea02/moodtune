@@ -7,6 +7,21 @@ export interface DbUser {
   photoURL: string | null
 }
 
+/** GET /api/playlists/my 응답의 플레이리스트 항목 */
+export interface SavedPlaylist {
+  id: number
+  name: string
+  description: string
+  category: string
+  tags: string[]
+  tracks: unknown[]
+  videos: unknown[]
+  isPublic: boolean
+  likeCount: number
+  playCount: number
+  createdAt: string
+}
+
 export interface Track {
   id: string
   title: string
