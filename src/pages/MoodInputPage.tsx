@@ -23,16 +23,16 @@ export default function MoodInputPage() {
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
       {/* Background glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-60 -left-60 h-[500px] w-[500px] rounded-full bg-violet-700/20 blur-[120px]" />
-        <div className="absolute -bottom-60 -right-60 h-[500px] w-[500px] rounded-full bg-blue-700/20 blur-[120px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[400px] w-[600px] rounded-full bg-violet-900/10 blur-[100px]" />
+        <div className="absolute -top-40 -left-40 h-[300px] w-[300px] rounded-full bg-violet-700/20 blur-[80px] sm:-top-60 sm:-left-60 sm:h-[500px] sm:w-[500px] sm:blur-[120px]" />
+        <div className="absolute -bottom-40 -right-40 h-[300px] w-[300px] rounded-full bg-blue-700/20 blur-[80px] sm:-bottom-60 sm:-right-60 sm:h-[500px] sm:w-[500px] sm:blur-[120px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[250px] w-[350px] rounded-full bg-violet-900/10 blur-[70px] sm:h-[400px] sm:w-[600px] sm:blur-[100px]" />
       </div>
 
       <div className="relative z-10 w-full max-w-lg">
         {/* Logo */}
         <div className="mb-12 text-center">
           <span className="mb-4 block text-3xl">🎵</span>
-          <h1 className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-blue-400 bg-clip-text text-5xl font-bold text-transparent">
+          <h1 className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-blue-400 bg-clip-text text-4xl font-bold text-transparent sm:text-5xl">
             moodtune
           </h1>
           <p className="mt-2 text-xs tracking-[0.3em] text-gray-500 uppercase">
@@ -54,7 +54,7 @@ export default function MoodInputPage() {
               onChange={(e) => setMood(e.target.value)}
               placeholder="예) 비 오는 밤, 혼자 있고 싶은 기분이야. 조금 우울하지만 차분한 음악이 듣고 싶어..."
               rows={5}
-              className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm leading-relaxed text-white placeholder-gray-600 backdrop-blur-sm transition-all duration-200 focus:border-violet-500/50 focus:bg-white/[0.08] focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+              className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base leading-relaxed text-white placeholder-gray-600 backdrop-blur-sm transition-all duration-200 focus:border-violet-500/50 focus:bg-white/[0.08] focus:outline-none focus:ring-1 focus:ring-violet-500/30 sm:text-sm"
             />
           </div>
 
@@ -65,7 +65,7 @@ export default function MoodInputPage() {
                 key={s}
                 type="button"
                 onClick={() => setMood(s)}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300"
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-400 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 sm:py-1.5"
               >
                 {s}
               </button>
@@ -75,7 +75,7 @@ export default function MoodInputPage() {
           <button
             type="submit"
             disabled={!mood.trim()}
-            className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 py-4 font-semibold text-white shadow-lg shadow-violet-900/40 transition-all duration-200 hover:-translate-y-0.5 hover:from-violet-500 hover:to-blue-500 hover:shadow-violet-900/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+            className="w-full min-h-[48px] rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 py-4 font-semibold text-white shadow-lg shadow-violet-900/40 transition-all duration-200 hover:-translate-y-0.5 hover:from-violet-500 hover:to-blue-500 hover:shadow-violet-900/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
           >
             내 기분에 맞는 음악 찾기 →
           </button>

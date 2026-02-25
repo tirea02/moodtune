@@ -36,7 +36,7 @@ function TrackSkeleton() {
 function VideoSkeleton() {
   return (
     <div className="animate-pulse overflow-hidden rounded-xl border border-white/5 bg-white/5">
-      <div className="h-28 bg-white/10" />
+      <div className="h-48 bg-white/10 sm:h-28" />
       <div className="space-y-2 p-3">
         <div className="h-2.5 w-full rounded bg-white/10" />
         <div className="h-2.5 w-3/4 rounded bg-white/[0.06]" />
@@ -93,7 +93,7 @@ export default function PlaylistPage() {
     <div className="min-h-screen">
       {/* Sticky header */}
       <header className="sticky top-0 z-50 border-b border-white/5 bg-[#080810]/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-4">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3 sm:py-4">
           <button
             onClick={() => navigate('/')}
             className="flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-white"
@@ -187,7 +187,7 @@ export default function PlaylistPage() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {loading
               ? Array.from({ length: 4 }).map((_, i) => <VideoSkeleton key={i} />)
               : videos.map((video) => (
@@ -198,7 +198,7 @@ export default function PlaylistPage() {
                     }
                     className="group cursor-pointer overflow-hidden rounded-xl border border-white/5 bg-white/5 transition-all hover:border-blue-500/30 hover:bg-white/[0.08]"
                   >
-                    <div className="relative h-28 overflow-hidden bg-gray-900">
+                    <div className="relative h-48 overflow-hidden bg-gray-900 sm:h-28">
                       <img
                         src={video.thumbnailUrl}
                         alt={video.title}
