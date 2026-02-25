@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import client from '../api/client'
+import PlaylistModal from '../components/PlaylistModal'
 import type { SavedPlaylist } from '../types'
 
 function formatDate(iso: string) {
@@ -44,6 +45,7 @@ export default function MyPlaylistsPage() {
   const [playlists, setPlaylists] = useState<SavedPlaylist[]>([])
   const [fetching, setFetching] = useState(false)
   const [fetchError, setFetchError] = useState('')
+  const [selectedPlaylist, setSelectedPlaylist] = useState<SavedPlaylist | null>(null)
 
   useEffect(() => {
     if (authLoading || !firebaseUser) return
@@ -125,7 +127,8 @@ export default function MyPlaylistsPage() {
             {playlists.map((pl) => (
               <div
                 key={pl.id}
-                className="rounded-2xl border border-white/5 bg-white/5 p-5 transition-all hover:border-violet-500/20 hover:bg-white/[0.08]"
+                onClick={() => setSelectedPlaylist(pl)}
+                className="cursor-pointer rounded-2xl border border-white/5 bg-white/5 p-5 transition-all hover:border-violet-500/20 hover:bg-white/[0.08]"
               >
                 {/* 카테고리 배지 */}
                 <span className="mb-3 inline-block rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-0.5 text-xs text-violet-300">
@@ -180,6 +183,14 @@ export default function MyPlaylistsPage() {
           </div>
         )}
       </main>
+
+      {/* 플레이리스트 상세 모달 */}
+      {selectedPlaylist && (
+        <PlaylistModal
+          playlist={selectedPlaylist}
+          onClose={() => setSelectedPlaylist(null)}
+        />
+      )}
     </div>
   )
 }

@@ -7,6 +7,16 @@ export interface DbUser {
   photoURL: string | null
 }
 
+/** iTunes Search API 응답 항목 */
+export interface ItunesResult {
+  artworkUrl100: string
+  previewUrl: string | null
+  trackViewUrl: string
+  trackName: string
+  artistName: string
+  collectionName: string
+}
+
 /** GET /api/playlists/my 응답의 플레이리스트 항목 */
 export interface SavedPlaylist {
   id: number
