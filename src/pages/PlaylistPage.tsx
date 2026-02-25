@@ -48,6 +48,13 @@ function VideoSkeleton() {
   )
 }
 
+/** sessionStorage 캐시 구조 — 보안: 인증 정보 미포함, Gemini 응답 결과만 저장 */
+interface PlaylistCache {
+  analysis: string
+  tracks: Track[]
+  videos: Video[]
+}
+
 export default function PlaylistPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
@@ -104,6 +111,17 @@ export default function PlaylistPage() {
         setLoading(true)
         setError('')
 
+        // 캐시 확인 — 같은 mood로 이미 조회한 결과 있으면 재사용 (탭 닫으면 자동 삭제)
+        const cacheKey = `playlist_cache_${mood}`
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          const { analysis, tracks, videos } = JSON.parse(cached) as PlaylistCache
+          setAnalysis(analysis)
+          setTracks(tracks)
+          setVideos(videos)
+          return
+        }
+
         // 1. Gemini: 감정 분석 + 트랙 추천 + 유튜브 검색 쿼리 생성
         const geminiResult = await analyzeMood(mood)
 
@@ -117,6 +135,18 @@ export default function PlaylistPage() {
         // 2. YouTube: Gemini가 제안한 쿼리로 영상 검색
         const youtubeVideos = await searchVideos(geminiResult.videoQueries)
         setVideos(youtubeVideos)
+
+        // 캐시 저장 — analysis / tracks / videos만 저장 (API 키·토큰·인증 정보 미포함)
+        try {
+          const toCache: PlaylistCache = {
+            analysis: geminiResult.analysis,
+            tracks: tracksWithId,
+            videos: youtubeVideos,
+          }
+          sessionStorage.setItem(cacheKey, JSON.stringify(toCache))
+        } catch {
+          // sessionStorage 용량 초과 등 — 캐시 실패는 무시하고 정상 동작 유지
+        }
       } catch (err) {
         console.error(err)
         setError('AI 분석 중 오류가 발생했어요. 잠시 후 다시 시도해줘.')
