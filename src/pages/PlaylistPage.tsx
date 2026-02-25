@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { analyzeMood } from '../api/gemini'
 import { searchVideos } from '../api/youtube'
 import client from '../api/client'
 import { useAuth } from '../hooks/useAuth'
-import type { Track, Video } from '../types'
+import type { Track, Video, ItunesResult } from '../types'
 
 const GENRE_COLORS: Record<string, string> = {
   'Indie Folk':  'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
@@ -65,6 +65,25 @@ export default function PlaylistPage() {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  // iTunes 미리듣기 상태
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null)
+  const [itunesLoading, setItunesLoading] = useState(false)
+  const [itunesResult, setItunesResult] = useState<ItunesResult | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [manualPlayNeeded, setManualPlayNeeded] = useState(false)
+  const [noPreview, setNoPreview] = useState(false)
+
+  // 페이지 이탈 시 오디오 정리
+  useEffect(() => {
+    return () => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.src = ''
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!mood) { navigate('/'); return }
 
@@ -96,6 +115,68 @@ export default function PlaylistPage() {
 
     fetchData()
   }, [mood, navigate])
+
+  /** iTunes Search API로 트랙 미리듣기 */
+  async function handleTrackClick(track: Track) {
+    if (activeTrackId === track.id) {
+      currentAudioRef.current?.pause()
+      currentAudioRef.current && (currentAudioRef.current.src = '')
+      currentAudioRef.current = null
+      setActiveTrackId(null)
+      setItunesResult(null)
+      setIsPlaying(false)
+      setNoPreview(false)
+      return
+    }
+
+    currentAudioRef.current?.pause()
+    currentAudioRef.current && (currentAudioRef.current.src = '')
+    currentAudioRef.current = null
+    setActiveTrackId(track.id)
+    setItunesLoading(true)
+    setItunesResult(null)
+    setIsPlaying(false)
+    setManualPlayNeeded(false)
+    setNoPreview(false)
+
+    try {
+      const query = encodeURIComponent(`${track.title} ${track.artist}`)
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${query}&entity=song&limit=1&country=KR`,
+      )
+      const data = (await res.json()) as { resultCount: number; results: ItunesResult[] }
+      const result = data.resultCount > 0 ? data.results[0] : null
+      setItunesLoading(false)
+
+      if (!result?.previewUrl) {
+        setNoPreview(true)
+        const q = encodeURIComponent(`${track.title} ${track.artist} lyrics`)
+        window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+        return
+      }
+
+      setItunesResult(result)
+      const audio = new Audio(result.previewUrl)
+      currentAudioRef.current = audio
+      audio.onended = () => { setIsPlaying(false); setActiveTrackId(null) }
+      setIsPlaying(true)
+      audio.play().catch(() => { setIsPlaying(false); setManualPlayNeeded(true) })
+    } catch {
+      setItunesLoading(false)
+      setActiveTrackId(null)
+    }
+  }
+
+  function handleManualPlay() {
+    currentAudioRef.current?.play().catch(() => {})
+    setIsPlaying(true)
+    setManualPlayNeeded(false)
+  }
+
+  function openYouTubeLyrics(track: Track) {
+    const q = encodeURIComponent(`${track.title} ${track.artist} lyrics`)
+    window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank')
+  }
 
   /**
    * 플레이리스트 저장
@@ -198,28 +279,81 @@ export default function PlaylistPage() {
           <div className="space-y-2">
             {loading
               ? Array.from({ length: 6 }).map((_, i) => <TrackSkeleton key={i} />)
-              : tracks.map((track, idx) => (
-                  <div
-                    key={track.id}
-                    className="group flex items-center gap-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3.5 transition-all hover:border-violet-500/30 hover:bg-white/[0.08]"
-                  >
-                    <div className="w-5 shrink-0 text-center">
-                      <span className="text-xs text-gray-600 group-hover:hidden">{idx + 1}</span>
-                      <span className="hidden text-sm text-violet-400 group-hover:block">▶</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-white">{track.title}</p>
-                      <p className="truncate text-xs text-gray-500">{track.artist}</p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
-                        GENRE_COLORS[track.genre] ?? 'border-gray-400/20 bg-gray-400/10 text-gray-400'
+              : tracks.map((track, idx) => {
+                  const isActive = activeTrackId === track.id
+                  const isThisLoading = isActive && itunesLoading
+                  const isThisNoPreview = isActive && noPreview
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => void handleTrackClick(track)}
+                      className={`group flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 transition-all ${
+                        isActive
+                          ? 'border-violet-500/50 bg-violet-500/10'
+                          : 'border-white/5 bg-white/5 hover:border-violet-500/30 hover:bg-white/[0.08]'
                       }`}
                     >
-                      {track.genre}
-                    </span>
-                  </div>
-                ))}
+                      {/* 상태 아이콘 */}
+                      <div className="w-5 shrink-0 text-center">
+                        {isThisLoading ? (
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                        ) : isActive && isPlaying ? (
+                          <span className="text-sm text-violet-400">■</span>
+                        ) : isActive && manualPlayNeeded ? (
+                          <span
+                            className="text-sm text-violet-400"
+                            onClick={(e) => { e.stopPropagation(); handleManualPlay() }}
+                          >▶</span>
+                        ) : isThisNoPreview ? (
+                          <span className="text-xs text-gray-600">↗</span>
+                        ) : (
+                          <>
+                            <span className="text-xs text-gray-600 group-hover:hidden">{idx + 1}</span>
+                            <span className="hidden text-sm text-violet-400 group-hover:block">▶</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 앨범아트 — iTunes 결과 있을 때만 */}
+                      {isActive && itunesResult?.artworkUrl100 && (
+                        <img
+                          src={itunesResult.artworkUrl100}
+                          alt={itunesResult.collectionName}
+                          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        />
+                      )}
+
+                      {/* 제목 / 아티스트 / 앨범명 */}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">{track.title}</p>
+                        <p className="truncate text-xs text-gray-500">{track.artist}</p>
+                        {isActive && itunesResult?.collectionName && (
+                          <p className="mt-0.5 truncate text-xs text-gray-600">{itunesResult.collectionName}</p>
+                        )}
+                      </div>
+
+                      {/* 우측: 장르 배지 or 전체 듣기 or YouTube 링크 */}
+                      {isThisNoPreview ? (
+                        <span className="shrink-0 text-xs text-blue-400">YouTube에서 듣기 ↗</span>
+                      ) : isActive && itunesResult ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openYouTubeLyrics(track) }}
+                          className="shrink-0 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-xs text-blue-400 transition-all hover:bg-blue-500/20"
+                        >
+                          전체 듣기 ↗
+                        </button>
+                      ) : (
+                        <span
+                          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
+                            GENRE_COLORS[track.genre] ?? 'border-gray-400/20 bg-gray-400/10 text-gray-400'
+                          }`}
+                        >
+                          {track.genre}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
           </div>
         </section>
 
