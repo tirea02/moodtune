@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { analyzeMood } from '../api/gemini'
 import { searchVideos } from '../api/youtube'
+import client from '../api/client'
+import { useAuth } from '../hooks/useAuth'
 import type { Track, Video } from '../types'
 
 const GENRE_COLORS: Record<string, string> = {
@@ -51,11 +53,17 @@ export default function PlaylistPage() {
   const navigate = useNavigate()
   const mood: string = state?.mood ?? ''
 
+  const { firebaseUser } = useAuth()
+
   const [tracks, setTracks] = useState<Track[]>([])
   const [videos, setVideos] = useState<Video[]>([])
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     if (!mood) { navigate('/'); return }
@@ -89,6 +97,34 @@ export default function PlaylistPage() {
     fetchData()
   }, [mood, navigate])
 
+  /**
+   * 플레이리스트 저장
+   * Gemini 결과(tracks, videos, analysis) + mood → POST /api/playlists
+   * tags: 트랙 장르 중복 제거, category: 첫 번째 트랙 장르
+   */
+  async function handleSave() {
+    if (!firebaseUser || saving || saved) return
+    try {
+      setSaving(true)
+      setSaveError('')
+      await client.post('/api/playlists', {
+        name: `${mood.slice(0, 50)} 플레이리스트`,
+        description: analysis,
+        category: tracks[0]?.genre ?? 'mixed',
+        tags: [...new Set(tracks.map((t) => t.genre))],
+        tracks,
+        videos,
+        isPublic: true,
+      })
+      setSaved(true)
+    } catch (err) {
+      console.error(err)
+      setSaveError('저장 실패. 다시 시도해줘.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="min-h-screen">
       {/* Sticky header */}
@@ -103,7 +139,22 @@ export default function PlaylistPage() {
           <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-sm font-bold text-transparent">
             moodtune
           </span>
-          <div className="w-16" />
+          {/* 저장 버튼: 로딩 중 숨김 / 비로그인 시 안내 / 로그인 시 저장 */}
+          {loading ? (
+            <div className="w-16" />
+          ) : !firebaseUser ? (
+            <span className="text-xs text-gray-600">로그인 후 저장</span>
+          ) : saved ? (
+            <span className="text-xs font-medium text-violet-400">✓ 저장됨</span>
+          ) : (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 transition-all hover:border-violet-400/50 hover:bg-violet-500/20 hover:text-violet-300 disabled:opacity-50"
+            >
+              {saving ? '저장 중...' : '저장하기'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -131,6 +182,11 @@ export default function PlaylistPage() {
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
+          </div>
+        )}
+        {saveError && (
+          <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {saveError}
           </div>
         )}
 
