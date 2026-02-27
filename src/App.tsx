@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import MoodInputPage from './pages/MoodInputPage'
 import PlaylistPage from './pages/PlaylistPage'
 import MyPlaylistsPage from './pages/MyPlaylistsPage'
+import FeedPage from './pages/FeedPage'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
             <Route path="/" element={<MoodInputPage />} />
             <Route path="/playlist" element={<PlaylistPage />} />
             <Route path="/my-playlists" element={<MyPlaylistsPage />} />
+            <Route path="/feed" element={<FeedPage />} />
           </Routes>
         </BrowserRouter>
       </div>
