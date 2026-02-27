@@ -71,7 +71,7 @@ export default function MyPlaylistsPage() {
   return (
     <div className="min-h-screen">
       {/* Sticky header */}
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#080810]/80 backdrop-blur-xl">
+      <header className="sticky top-0 sm:top-14 z-40 border-b border-white/5 bg-[#080810]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3 sm:py-4">
           <button
             onClick={() => navigate('/')}

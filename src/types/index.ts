@@ -17,7 +17,7 @@ export interface ItunesResult {
   collectionName: string
 }
 
-/** GET /api/playlists/my 응답의 플레이리스트 항목 */
+/** GET /api/playlists/my 및 GET /api/playlists 응답의 플레이리스트 항목 */
 export interface SavedPlaylist {
   id: number
   name: string
@@ -30,6 +30,8 @@ export interface SavedPlaylist {
   likeCount: number
   playCount: number
   createdAt: string
+  /** 공개 피드에서만 포함 (GET /api/playlists) */
+  user?: { id: string; displayName: string; photoUrl: string | null }
 }
 
 export interface Track {
