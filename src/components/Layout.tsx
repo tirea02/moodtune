@@ -2,18 +2,19 @@
  * 공통 레이아웃 컴포넌트
  *
  * 모바일(<sm):
- *   - 고정 하단 탭바 (홈 / 피드 / 보관함 / 프로필[비활성])
+ *   - 고정 하단 탭바 (홈 / 피드 / 보관함 / 프로필)
+ *   - 프로필 탭: 비로그인 → login() 팝업, 로그인 → 아바타 + /my-playlists 이동
  *   - 콘텐츠에 pb-16 (탭바 높이만큼 여백)
  *
  * 데스크탑(sm+):
  *   - 고정 상단 헤더 (MoodTune 로고 / 네비 링크 / GoogleLoginButton)
- *   - 콘텐츠에 pt-14 (헤더 높이만큼 여백)
  *   - Auth loading 중 → 스켈레톤으로 깜빡임 방지
+ *   - 콘텐츠에 pt-14 (헤더 높이만큼 여백)
  *
  * Per-page 헤더(sticky)는 데스크탑에서 sm:top-14 사용해 레이아웃 헤더 아래에 붙음
  */
 import type { ReactNode } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import GoogleLoginButton from './GoogleLoginButton'
 import Footer from './Footer'
@@ -23,7 +24,7 @@ const NAV_ITEMS = [
   { label: '홈',    emoji: '🏠', path: '/'            },
   { label: '피드',  emoji: '📻', path: '/feed'        },
   { label: '보관함', emoji: '🔖', path: '/my-playlists' },
-  { label: '프로필', emoji: '👤', path: null           }, // 향후 대비
+  { label: '프로필', emoji: '👤', path: null           }, // Auth 게이트
 ] as const
 
 type NavItem = (typeof NAV_ITEMS)[number]
@@ -39,7 +40,17 @@ interface Props {
 
 export default function Layout({ children }: Props) {
   const location = useLocation()
-  const { loading } = useAuth()
+  const navigate  = useNavigate()
+  const { firebaseUser, loading, login } = useAuth()
+
+  // 프로필 탭: 비로그인 → login(), 로그인 → /my-playlists
+  function handleProfileTab() {
+    if (firebaseUser) {
+      navigate('/my-playlists')
+    } else {
+      void login()
+    }
+  }
 
   return (
     <>
@@ -89,42 +100,59 @@ export default function Layout({ children }: Props) {
       {/* ── 모바일 하단 탭바 (<sm) ── */}
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 flex h-16 border-t border-white/5 bg-[#080810]/95 backdrop-blur-xl">
         {NAV_ITEMS.map((item) => {
-          const active   = isActive(item, location.pathname)
-          const disabled = item.path === null
+          // ── 프로필 탭: Auth 게이트 ──
+          if (item.path === null) {
+            const label = loading
+              ? '...'
+              : firebaseUser
+              ? (firebaseUser.displayName?.split(' ')[0] ?? '나')
+              : '로그인'
 
-          const inner = (
-            <div
-              className={`flex flex-col items-center gap-0.5 py-2 ${disabled ? 'opacity-30' : ''}`}
-            >
-              <span className="text-xl leading-none">{item.emoji}</span>
-              <span
-                className={`text-[10px] font-medium transition-colors ${
-                  active ? 'text-violet-400' : 'text-gray-500'
-                }`}
-              >
-                {item.label}
-              </span>
-            </div>
-          )
-
-          if (disabled) {
             return (
-              <div
-                key={item.label}
-                className="flex flex-1 cursor-not-allowed items-center justify-center"
+              <button
+                key="profile"
+                onClick={handleProfileTab}
+                className="flex flex-1 items-center justify-center"
               >
-                {inner}
-              </div>
+                <div className="flex flex-col items-center gap-0.5 py-2">
+                  {/* 아바타 또는 이모지 */}
+                  {loading ? (
+                    <div className="h-6 w-6 animate-pulse rounded-full bg-white/10" />
+                  ) : firebaseUser?.photoURL ? (
+                    <img
+                      src={firebaseUser.photoURL}
+                      alt={firebaseUser.displayName ?? ''}
+                      className="h-6 w-6 rounded-full ring-1 ring-violet-400/60"
+                    />
+                  ) : (
+                    <span className="text-xl leading-none">{item.emoji}</span>
+                  )}
+                  <span className="text-[10px] font-medium text-gray-500 transition-colors">
+                    {label}
+                  </span>
+                </div>
+              </button>
             )
           }
 
+          // ── 일반 링크 탭 ──
+          const active = isActive(item, location.pathname)
           return (
             <Link
               key={item.path}
               to={item.path!}
               className="flex flex-1 items-center justify-center"
             >
-              {inner}
+              <div className="flex flex-col items-center gap-0.5 py-2">
+                <span className="text-xl leading-none">{item.emoji}</span>
+                <span
+                  className={`text-[10px] font-medium transition-colors ${
+                    active ? 'text-violet-400' : 'text-gray-500'
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </div>
             </Link>
           )
         })}
