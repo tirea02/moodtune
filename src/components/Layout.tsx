@@ -13,7 +13,7 @@
  *
  * Per-page 헤더(sticky)는 데스크탑에서 sm:top-14 사용해 레이아웃 헤더 아래에 붙음
  */
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import GoogleLoginButton from './GoogleLoginButton'
@@ -42,6 +42,11 @@ export default function Layout({ children }: Props) {
   const location = useLocation()
   const navigate  = useNavigate()
   const { firebaseUser, loading, login } = useAuth()
+
+  // 라우트 변경 시 스크롤 최상단 초기화 (SPA 페이지 간 스크롤 공유 방지)
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
 
   // 프로필 탭: 비로그인 → login(), 로그인 → /my-playlists
   function handleProfileTab() {

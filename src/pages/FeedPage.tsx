@@ -81,13 +81,6 @@ export default function FeedPage() {
 
   const hasMore = playlists.length < total
 
-  // ── 페이지 진입 시 스크롤 초기화 ─────────────────
-  // SPA 특성상 이전 페이지(보관함 등)의 스크롤 위치가 공유됨
-  // → sentinel이 마운트 직후 viewport 안에 있어 이중 로드 발생하는 버그 방지
-  useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [])
-
   // ── 검색어 debounce (300ms) ──────────────────────
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
