@@ -1,0 +1,134 @@
+/**
+ * 공통 레이아웃 컴포넌트
+ *
+ * 모바일(<sm):
+ *   - 고정 하단 탭바 (홈 / 피드 / 보관함 / 프로필[비활성])
+ *   - 콘텐츠에 pb-16 (탭바 높이만큼 여백)
+ *
+ * 데스크탑(sm+):
+ *   - 고정 상단 헤더 (MoodTune 로고 / 네비 링크 / GoogleLoginButton)
+ *   - 콘텐츠에 pt-14 (헤더 높이만큼 여백)
+ *   - Auth loading 중 → 스켈레톤으로 깜빡임 방지
+ *
+ * Per-page 헤더(sticky)는 데스크탑에서 sm:top-14 사용해 레이아웃 헤더 아래에 붙음
+ */
+import type { ReactNode } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+import GoogleLoginButton from './GoogleLoginButton'
+import Footer from './Footer'
+
+// ─── 네비게이션 항목 ────────────────────────────────
+const NAV_ITEMS = [
+  { label: '홈',    emoji: '🏠', path: '/'            },
+  { label: '피드',  emoji: '📻', path: '/feed'        },
+  { label: '보관함', emoji: '🔖', path: '/my-playlists' },
+  { label: '프로필', emoji: '👤', path: null           }, // 향후 대비
+] as const
+
+type NavItem = (typeof NAV_ITEMS)[number]
+
+function isActive(item: NavItem, pathname: string): boolean {
+  if (!item.path) return false
+  return item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
+}
+
+interface Props {
+  children: ReactNode
+}
+
+export default function Layout({ children }: Props) {
+  const location = useLocation()
+  const { loading } = useAuth()
+
+  return (
+    <>
+      {/* ── 데스크탑 상단 헤더 (sm+) ── */}
+      <header className="hidden sm:flex fixed top-0 left-0 right-0 z-50 h-14 items-center border-b border-white/5 bg-[#080810]/90 px-6 backdrop-blur-xl">
+        {/* 로고 */}
+        <Link
+          to="/"
+          className="mr-8 shrink-0 bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-sm font-bold text-transparent"
+        >
+          MoodTune
+        </Link>
+
+        {/* 중앙 네비 */}
+        <nav className="flex flex-1 items-center gap-1">
+          {NAV_ITEMS.filter((item) => item.path !== null).map((item) => (
+            <Link
+              key={item.path}
+              to={item.path!}
+              className={`rounded-lg px-3 py-1.5 text-sm transition-all ${
+                isActive(item, location.pathname)
+                  ? 'bg-white/10 font-medium text-white'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* 우측: 로그인 상태 (loading → 스켈레톤) */}
+        <div className="flex shrink-0 items-center">
+          {loading ? (
+            <div className="h-8 w-28 animate-pulse rounded-xl bg-white/10" />
+          ) : (
+            <GoogleLoginButton />
+          )}
+        </div>
+      </header>
+
+      {/* ── 콘텐츠 영역 ── */}
+      <div className="min-h-screen pb-16 sm:pb-0 sm:pt-14">
+        {children}
+        <Footer />
+      </div>
+
+      {/* ── 모바일 하단 탭바 (<sm) ── */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 flex h-16 border-t border-white/5 bg-[#080810]/95 backdrop-blur-xl">
+        {NAV_ITEMS.map((item) => {
+          const active   = isActive(item, location.pathname)
+          const disabled = item.path === null
+
+          const inner = (
+            <div
+              className={`flex flex-col items-center gap-0.5 py-2 ${disabled ? 'opacity-30' : ''}`}
+            >
+              <span className="text-xl leading-none">{item.emoji}</span>
+              <span
+                className={`text-[10px] font-medium transition-colors ${
+                  active ? 'text-violet-400' : 'text-gray-500'
+                }`}
+              >
+                {item.label}
+              </span>
+            </div>
+          )
+
+          if (disabled) {
+            return (
+              <div
+                key={item.label}
+                className="flex flex-1 cursor-not-allowed items-center justify-center"
+              >
+                {inner}
+              </div>
+            )
+          }
+
+          return (
+            <Link
+              key={item.path}
+              to={item.path!}
+              className="flex flex-1 items-center justify-center"
+            >
+              {inner}
+            </Link>
+          )
+        })}
+      </nav>
+    </>
+  )
+}
