@@ -12,6 +12,13 @@
  *   - sentinel 언마운트 시 observer 자동 해제 → 로드 중 이중 요청 방지
  *   - currentFetchId ref: 필터 변경 시 진행 중인 응답 무시 (stale 방지)
  *
+ * 좋아요/북마크 debounce 전략 (300ms):
+ *   - interactions (state): 현재 UI가 보여주는 낙관적 상태
+ *   - committedRef (ref): 마지막으로 서버에서 확인된 상태
+ *   - interactionsRef (ref): interactions와 동기화된 ref (timer 클로저에서 최신값 읽기용)
+ *   - likeTimersRef / bookmarkTimersRef: 플레이리스트 ID별 debounce timer
+ *   → 빠른 클릭 시 API 1회만 호출, 409 Already liked loop 버그 방지
+ *
  * 카드 클릭 → PlaylistModal (재사용)
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -86,10 +93,14 @@ export default function FeedPage() {
   const [interactions, setInteractions]   = useState<Record<number, Interaction>>({})
 
   // Refs
-  const sentinelRef   = useRef<HTMLDivElement>(null)
-  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pageRef       = useRef(1)       // 현재 로드된 페이지 (state 불필요)
-  const fetchIdRef    = useRef(0)       // stale 응답 무시용
+  const sentinelRef         = useRef<HTMLDivElement>(null)
+  const debounceRef         = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pageRef             = useRef(1)       // 현재 로드된 페이지 (state 불필요)
+  const fetchIdRef          = useRef(0)       // stale 응답 무시용
+  const committedRef        = useRef<Record<number, Interaction>>({})    // 서버 확인된 상태
+  const interactionsRef     = useRef<Record<number, Interaction>>({})    // timer 클로저용
+  const likeTimersRef       = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+  const bookmarkTimersRef   = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
   const hasMore = playlists.length < total
 
@@ -138,12 +149,17 @@ export default function FeedPage() {
       // interactions 초기화 (isLiked/isBookmarked는 로그인 시에만 포함)
       const newInteractions: Record<number, Interaction> = {}
       for (const pl of res.data.playlists) {
-        newInteractions[pl.id] = {
+        const ia: Interaction = {
           liked: pl.isLiked ?? false,
           likeCount: pl.likeCount,
           bookmarked: pl.isBookmarked ?? false,
         }
+        newInteractions[pl.id] = ia
+        committedRef.current[pl.id] = ia  // 서버 확인 상태 동기화
       }
+      interactionsRef.current = append
+        ? { ...interactionsRef.current, ...newInteractions }
+        : newInteractions
       setInteractions((prev) => append ? { ...prev, ...newInteractions } : newInteractions)
     } catch {
       if (id === fetchIdRef.current && !append) {
@@ -187,46 +203,79 @@ export default function FeedPage() {
     return () => observer.disconnect()
   }, [fetchPlaylists, hasMore, loadingMore])
 
-  // ── 좋아요 핸들러 (optimistic) ────────────────────
-  async function handleLike(pl: SavedPlaylist) {
+  // ── 좋아요 핸들러 (debounce 300ms + committedRef 패턴) ─────────────
+  // 빠른 클릭 시 최종 상태 기준 API 1회 호출 → 409 Already liked loop 방지
+  function handleLike(pl: SavedPlaylist) {
     if (!firebaseUser) { login(); return }
-    const cur = interactions[pl.id] ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
-    const nextLiked = !cur.liked
-    setInteractions((prev) => ({
-      ...prev,
-      [pl.id]: { ...cur, liked: nextLiked, likeCount: cur.likeCount + (nextLiked ? 1 : -1) },
-    }))
-    try {
-      if (nextLiked) {
-        await client.post(`/api/playlists/${pl.id}/like`)
-      } else {
-        await client.delete(`/api/playlists/${pl.id}/like`)
+
+    // 1. 즉시 optimistic update
+    const cur = interactionsRef.current[pl.id] ?? committedRef.current[pl.id]
+                ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
+    const next: Interaction = { ...cur, liked: !cur.liked, likeCount: cur.likeCount + (!cur.liked ? 1 : -1) }
+    interactionsRef.current[pl.id] = next
+    setInteractions((prev) => ({ ...prev, [pl.id]: next }))
+
+    // 2. 기존 timer 취소 + 새 timer 세팅 (300ms debounce)
+    if (likeTimersRef.current[pl.id]) clearTimeout(likeTimersRef.current[pl.id])
+    likeTimersRef.current[pl.id] = setTimeout(async () => {
+      const latest    = interactionsRef.current[pl.id]
+      const committed = committedRef.current[pl.id]
+      if (!latest || !committed) return
+      if (latest.liked === committed.liked) return  // 제자리 → API 불필요
+
+      try {
+        latest.liked
+          ? await client.post(`/api/playlists/${pl.id}/like`)
+          : await client.delete(`/api/playlists/${pl.id}/like`)
+        committedRef.current[pl.id] = { ...committed, liked: latest.liked, likeCount: latest.likeCount }
+      } catch {
+        // rollback to committed
+        const rb = committedRef.current[pl.id]
+        if (!rb) return
+        interactionsRef.current[pl.id] = { ...interactionsRef.current[pl.id], liked: rb.liked, likeCount: rb.likeCount }
+        setInteractions((prev) => ({
+          ...prev,
+          [pl.id]: { ...prev[pl.id], liked: rb.liked, likeCount: rb.likeCount },
+        }))
       }
-    } catch {
-      // 실패 시 rollback
-      setInteractions((prev) => ({ ...prev, [pl.id]: cur }))
-    }
+    }, 300)
   }
 
-  // ── 북마크 핸들러 (optimistic) ────────────────────
-  async function handleBookmark(pl: SavedPlaylist) {
+  // ── 북마크 핸들러 (debounce 300ms + committedRef 패턴) ─────────────
+  function handleBookmark(pl: SavedPlaylist) {
     if (!firebaseUser) { login(); return }
-    const cur = interactions[pl.id] ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
-    const nextBookmarked = !cur.bookmarked
-    setInteractions((prev) => ({
-      ...prev,
-      [pl.id]: { ...cur, bookmarked: nextBookmarked },
-    }))
-    try {
-      if (nextBookmarked) {
-        await client.post(`/api/playlists/${pl.id}/bookmark`)
-      } else {
-        await client.delete(`/api/playlists/${pl.id}/bookmark`)
+
+    // 1. 즉시 optimistic update
+    const cur = interactionsRef.current[pl.id] ?? committedRef.current[pl.id]
+                ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
+    const next: Interaction = { ...cur, bookmarked: !cur.bookmarked }
+    interactionsRef.current[pl.id] = next
+    setInteractions((prev) => ({ ...prev, [pl.id]: next }))
+
+    // 2. 기존 timer 취소 + 새 timer 세팅 (300ms debounce)
+    if (bookmarkTimersRef.current[pl.id]) clearTimeout(bookmarkTimersRef.current[pl.id])
+    bookmarkTimersRef.current[pl.id] = setTimeout(async () => {
+      const latest    = interactionsRef.current[pl.id]
+      const committed = committedRef.current[pl.id]
+      if (!latest || !committed) return
+      if (latest.bookmarked === committed.bookmarked) return  // 제자리 → API 불필요
+
+      try {
+        latest.bookmarked
+          ? await client.post(`/api/playlists/${pl.id}/bookmark`)
+          : await client.delete(`/api/playlists/${pl.id}/bookmark`)
+        committedRef.current[pl.id] = { ...committed, bookmarked: latest.bookmarked }
+      } catch {
+        // rollback to committed
+        const rb = committedRef.current[pl.id]
+        if (!rb) return
+        interactionsRef.current[pl.id] = { ...interactionsRef.current[pl.id], bookmarked: rb.bookmarked }
+        setInteractions((prev) => ({
+          ...prev,
+          [pl.id]: { ...prev[pl.id], bookmarked: rb.bookmarked },
+        }))
       }
-    } catch {
-      // 실패 시 rollback
-      setInteractions((prev) => ({ ...prev, [pl.id]: cur }))
-    }
+    }, 300)
   }
 
   // ── 검색어 입력 핸들러 ─────────────────────────────
