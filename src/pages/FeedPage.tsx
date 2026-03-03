@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import PlaylistModal from '../components/PlaylistModal'
+import { useAuth } from '../hooks/useAuth'
 import type { SavedPlaylist } from '../types'
 
 // ─── 상수 ─────────────────────────────────────────
@@ -55,9 +56,17 @@ function CardSkeleton() {
   )
 }
 
+// ─── 좋아요/북마크 인터랙션 상태 타입 ──────────────
+interface Interaction {
+  liked: boolean
+  likeCount: number
+  bookmarked: boolean
+}
+
 // ─── 메인 컴포넌트 ─────────────────────────────────
 export default function FeedPage() {
   const navigate = useNavigate()
+  const { firebaseUser, login } = useAuth()
 
   // 필터 상태
   const [searchInput, setSearchInput]     = useState('')
@@ -72,6 +81,9 @@ export default function FeedPage() {
   const [loadingMore, setLoadingMore]     = useState(false)
   const [error, setError]                 = useState('')
   const [selectedPlaylist, setSelectedPlaylist] = useState<SavedPlaylist | null>(null)
+
+  // 좋아요/북마크 optimistic 상태 (카드 ID 기준)
+  const [interactions, setInteractions]   = useState<Record<number, Interaction>>({})
 
   // Refs
   const sentinelRef   = useRef<HTMLDivElement>(null)
@@ -122,6 +134,17 @@ export default function FeedPage() {
       setPlaylists((prev) =>
         append ? [...prev, ...res.data.playlists] : res.data.playlists,
       )
+
+      // interactions 초기화 (isLiked/isBookmarked는 로그인 시에만 포함)
+      const newInteractions: Record<number, Interaction> = {}
+      for (const pl of res.data.playlists) {
+        newInteractions[pl.id] = {
+          liked: pl.isLiked ?? false,
+          likeCount: pl.likeCount,
+          bookmarked: pl.isBookmarked ?? false,
+        }
+      }
+      setInteractions((prev) => append ? { ...prev, ...newInteractions } : newInteractions)
     } catch {
       if (id === fetchIdRef.current && !append) {
         setError('피드를 불러오지 못했어요. 잠시 후 다시 시도해주세요.')
@@ -163,6 +186,48 @@ export default function FeedPage() {
     observer.observe(el)
     return () => observer.disconnect()
   }, [fetchPlaylists, hasMore, loadingMore])
+
+  // ── 좋아요 핸들러 (optimistic) ────────────────────
+  async function handleLike(pl: SavedPlaylist) {
+    if (!firebaseUser) { login(); return }
+    const cur = interactions[pl.id] ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
+    const nextLiked = !cur.liked
+    setInteractions((prev) => ({
+      ...prev,
+      [pl.id]: { ...cur, liked: nextLiked, likeCount: cur.likeCount + (nextLiked ? 1 : -1) },
+    }))
+    try {
+      if (nextLiked) {
+        await client.post(`/api/playlists/${pl.id}/like`)
+      } else {
+        await client.delete(`/api/playlists/${pl.id}/like`)
+      }
+    } catch {
+      // 실패 시 rollback
+      setInteractions((prev) => ({ ...prev, [pl.id]: cur }))
+    }
+  }
+
+  // ── 북마크 핸들러 (optimistic) ────────────────────
+  async function handleBookmark(pl: SavedPlaylist) {
+    if (!firebaseUser) { login(); return }
+    const cur = interactions[pl.id] ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
+    const nextBookmarked = !cur.bookmarked
+    setInteractions((prev) => ({
+      ...prev,
+      [pl.id]: { ...cur, bookmarked: nextBookmarked },
+    }))
+    try {
+      if (nextBookmarked) {
+        await client.post(`/api/playlists/${pl.id}/bookmark`)
+      } else {
+        await client.delete(`/api/playlists/${pl.id}/bookmark`)
+      }
+    } catch {
+      // 실패 시 rollback
+      setInteractions((prev) => ({ ...prev, [pl.id]: cur }))
+    }
+  }
 
   // ── 검색어 입력 핸들러 ─────────────────────────────
   function handleSearchChange(value: string) {
@@ -306,14 +371,42 @@ export default function FeedPage() {
                   </div>
                 )}
 
-                {/* 하단: 좋아요 + 저장일 */}
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-xs text-gray-500">
-                    <span className="text-rose-400">♥</span>
-                    {pl.likeCount}
-                  </span>
-                  <span className="text-xs text-gray-600">{formatDate(pl.createdAt)}</span>
-                </div>
+                {/* 하단: 좋아요 + 북마크 + 저장일 */}
+                {(() => {
+                  const ia = interactions[pl.id] ?? { liked: false, likeCount: pl.likeCount, bookmarked: false }
+                  return (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {/* 좋아요 버튼 */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void handleLike(pl) }}
+                          title={firebaseUser ? (ia.liked ? '좋아요 취소' : '좋아요') : '로그인 후 이용 가능'}
+                          className={`flex items-center gap-1 text-xs transition-colors ${
+                            ia.liked
+                              ? 'text-rose-400 hover:text-rose-300'
+                              : 'text-gray-500 hover:text-rose-400'
+                          }`}
+                        >
+                          <span>{ia.liked ? '♥' : '♡'}</span>
+                          <span>{ia.likeCount}</span>
+                        </button>
+                        {/* 북마크 버튼 */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void handleBookmark(pl) }}
+                          title={firebaseUser ? (ia.bookmarked ? '북마크 취소' : '북마크') : '로그인 후 이용 가능'}
+                          className={`text-xs transition-colors ${
+                            ia.bookmarked
+                              ? 'text-violet-400 hover:text-violet-300'
+                              : 'text-gray-500 hover:text-violet-400'
+                          }`}
+                        >
+                          {ia.bookmarked ? '🔖' : '🔗'}
+                        </button>
+                      </div>
+                      <span className="text-xs text-gray-600">{formatDate(pl.createdAt)}</span>
+                    </div>
+                  )
+                })()}
               </div>
             ))}
           </div>

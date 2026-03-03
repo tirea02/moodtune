@@ -32,6 +32,9 @@ export interface SavedPlaylist {
   createdAt: string
   /** 공개 피드에서만 포함 (GET /api/playlists) */
   user?: { id: string; displayName: string; photoUrl: string | null }
+  /** 로그인 유저 전용 — GET /api/playlists 에서 optional 반환 */
+  isLiked?: boolean
+  isBookmarked?: boolean
 }
 
 export interface Track {
