@@ -73,7 +73,7 @@ interface Interaction {
 // ─── 메인 컴포넌트 ─────────────────────────────────
 export default function FeedPage() {
   const navigate = useNavigate()
-  const { firebaseUser, login } = useAuth()
+  const { firebaseUser, login, loading: authLoading } = useAuth()
 
   // 필터 상태
   const [searchInput, setSearchInput]     = useState('')
@@ -171,15 +171,18 @@ export default function FeedPage() {
         else setLoading(false)
       }
     }
-  }, [category, sort, debouncedSearch])
+  }, [category, sort, debouncedSearch, authLoading])
 
   // ── 필터 변경 → 리셋 후 1페이지 로드 ─────────────
+  // authLoading: true 동안 대기 → false가 된 후 실행 (Firebase 초기화 완료 보장)
+  // → auth.currentUser가 세팅된 후 요청하므로 isLiked/isBookmarked 정상 반환
   useEffect(() => {
+    if (authLoading) return
     pageRef.current = 1
     setPlaylists([])
     setTotal(0)
     void fetchPlaylists(1, false)
-  }, [fetchPlaylists])
+  }, [fetchPlaylists, authLoading])
 
   // ── IntersectionObserver (인피니티 스크롤) ────────
   // sentinel이 !loading && !loadingMore && hasMore 일 때만 DOM에 존재
