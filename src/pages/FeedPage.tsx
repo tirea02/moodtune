@@ -171,18 +171,22 @@ export default function FeedPage() {
         else setLoading(false)
       }
     }
-  }, [category, sort, debouncedSearch, authLoading])
+  }, [category, sort, debouncedSearch])
 
   // ── 필터 변경 → 리셋 후 1페이지 로드 ─────────────
   // authLoading: true 동안 대기 → false가 된 후 실행 (Firebase 초기화 완료 보장)
-  // → auth.currentUser가 세팅된 후 요청하므로 isLiked/isBookmarked 정상 반환
+  // firebaseUser를 deps에 포함:
+  //   StrictMode 재마운트 시 Firebase 재구독 콜백이 setFirebaseUser를 호출
+  //   → firebaseUser dep 변화 → 이 effect 재발화
+  //   → 이 시점엔 auth.currentUser 세팅 완료 → 토큰 정상 포함
+  //   (authLoading=true 가드가 syncWithBackend 전 조기 발화 차단)
   useEffect(() => {
     if (authLoading) return
     pageRef.current = 1
     setPlaylists([])
     setTotal(0)
     void fetchPlaylists(1, false)
-  }, [fetchPlaylists, authLoading])
+  }, [fetchPlaylists, authLoading, firebaseUser])
 
   // ── IntersectionObserver (인피니티 스크롤) ────────
   // sentinel이 !loading && !loadingMore && hasMore 일 때만 DOM에 존재
