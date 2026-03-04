@@ -86,10 +86,10 @@ export default function Layout({ children }: Props) {
           ))}
         </nav>
 
-        {/* 우측: 로그인 상태 (loading → 스켈레톤) */}
+        {/* 우측: 로그인 상태 (loading → 원형 스켈레톤) */}
         <div className="flex shrink-0 items-center">
           {loading ? (
-            <div className="h-8 w-28 animate-pulse rounded-xl bg-white/10" />
+            <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
           ) : (
             <GoogleLoginButton />
           )}
