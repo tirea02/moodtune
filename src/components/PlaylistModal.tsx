@@ -55,6 +55,8 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
 
   const { firebaseUser, dbUser } = useAuth()
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  // iTunes 요청 순서 추적 — stale 응답 방지
+  const itunesFetchIdRef = useRef(0)
 
   // ── 오디오 상태 ──
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null)
@@ -67,17 +69,27 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
   // ── 댓글 상태 ──
   const [comments, setComments] = useState<Comment[]>([])
   const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentError, setCommentError] = useState<string | null>(null)
   const [commentText, setCommentText] = useState('')
   const [commentSubmitting, setCommentSubmitting] = useState(false)
 
   // 모달 오픈 시 댓글 로드
+  // AbortController: 모달 재오픈 또는 playlist 변경 시 이전 요청 취소 → race condition 방지
   useEffect(() => {
+    const controller = new AbortController()
     setCommentsLoading(true)
-    fetch(`${import.meta.env.VITE_API_URL}/api/playlists/${playlist.id}/comments`)
+    setCommentError(null)
+    fetch(`${import.meta.env.VITE_API_URL}/api/playlists/${playlist.id}/comments`, {
+      signal: controller.signal,
+    })
       .then((r) => r.json() as Promise<{ comments: Comment[] }>)
       .then(({ comments }) => setComments(comments))
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setCommentError('댓글을 불러오지 못했어요. 잠시 후 다시 시도해주세요.')
+      })
       .finally(() => setCommentsLoading(false))
+    return () => controller.abort()
   }, [playlist.id])
 
   async function handleDeleteComment(commentId: number) {
@@ -85,7 +97,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
       await client.delete(`/api/playlists/${playlist.id}/comments/${commentId}`)
       setComments((prev) => prev.filter((c) => c.id !== commentId))
     } catch {
-      // 에러 시 조용히 실패
+      setCommentError('댓글 삭제에 실패했어요. 다시 시도해주세요.')
     }
   }
 
@@ -93,6 +105,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
     const content = commentText.trim()
     if (!content || commentSubmitting) return
     setCommentSubmitting(true)
+    setCommentError(null)
     try {
       const res = await client.post<{ comment: Comment }>(
         `/api/playlists/${playlist.id}/comments`,
@@ -101,7 +114,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
       setComments((prev) => [...prev, res.data.comment])
       setCommentText('')
     } catch {
-      // 에러 시 조용히 실패 (입력창 내용 유지)
+      setCommentError('댓글 등록에 실패했어요. 다시 시도해주세요.')
     } finally {
       setCommentSubmitting(false)
     }
@@ -145,13 +158,14 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
   }
 
   async function handleTrackClick(track: Track) {
-    // 같은 트랙 재클릭 → 정지
+    // 같은 트랙 재클릭 → 정지 + 진행 중인 fetch 무효화
     if (activeTrackId === track.id) {
       stopCurrentAudio()
       setActiveTrackId(null)
       setItunesResult(null)
       setIsPlaying(false)
       setNoPreview(false)
+      itunesFetchIdRef.current++
       return
     }
 
@@ -163,8 +177,15 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
     setManualPlayNeeded(false)
     setNoPreview(false)
 
+    // 각 클릭에 고유 ID 부여 — 응답 수신 시 최신 요청인지 확인
+    const fetchId = ++itunesFetchIdRef.current
+
     try {
       const result = await fetchItunes(track)
+
+      // stale 응답 무시 (사용자가 다른 곡을 클릭한 경우)
+      if (fetchId !== itunesFetchIdRef.current) return
+
       setItunesLoading(false)
 
       // previewUrl 없음 → YouTube lyrics 새 탭 즉시 오픈
@@ -190,6 +211,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
         setManualPlayNeeded(true)
       })
     } catch {
+      if (fetchId !== itunesFetchIdRef.current) return
       setItunesLoading(false)
       setActiveTrackId(null)
     }
@@ -438,6 +460,10 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
             )}
 
             {/* 댓글 목록 */}
+            {commentError && (
+              <p className="mb-3 text-xs text-red-400">{commentError}</p>
+            )}
+
             {commentsLoading ? (
               <div className="space-y-3">
                 {[0, 1, 2].map((i) => (
