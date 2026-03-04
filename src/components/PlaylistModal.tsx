@@ -455,7 +455,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
             ) : (
               <div className="space-y-3">
                 {comments.map((comment) => (
-                  <div key={comment.id} className="group flex gap-2">
+                  <div key={comment.id} className="flex gap-2">
                     {comment.user.photoUrl ? (
                       <img
                         src={comment.user.photoUrl}
@@ -479,7 +479,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
                         {dbUser && String(comment.user.id) === String(dbUser.id) && (
                           <button
                             onClick={() => void handleDeleteComment(comment.id)}
-                            className="ml-auto text-[10px] text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-rose-400"
+                            className="ml-auto text-xs text-red-400 hover:text-red-300"
                           >
                             삭제
                           </button>
