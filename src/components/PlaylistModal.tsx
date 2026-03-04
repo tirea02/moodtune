@@ -8,9 +8,16 @@
  *   → 같은 트랙 재클릭: 정지
  * 유튜브 영상 썸네일 클릭 → youtube.com/watch?v= 새 탭
  * ESC 키 / 닫기 버튼 / 오버레이 클릭 → onClose() + 오디오 중지
+ *
+ * 댓글 흐름:
+ *   모달 오픈 → GET /api/playlists/:id/comments → 목록 표시
+ *   로그인 유저: 입력창 활성화 → POST → 목록 즉시 prepend
+ *   비로그인: "로그인 후 댓글을 작성하세요" 안내
  */
 import { useEffect, useRef, useState } from 'react'
-import type { SavedPlaylist, Track, Video, ItunesResult } from '../types'
+import type { SavedPlaylist, Track, Video, ItunesResult, Comment } from '../types'
+import { useAuth } from '../hooks/useAuth'
+import client from '../api/client'
 
 const GENRE_COLORS: Record<string, string> = {
   'Indie Folk': 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
@@ -46,14 +53,50 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
   const tracks = playlist.tracks as Track[]
   const videos = playlist.videos as Video[]
 
+  const { firebaseUser } = useAuth()
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
+  // ── 오디오 상태 ──
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null)
   const [itunesLoading, setItunesLoading] = useState(false)
   const [itunesResult, setItunesResult] = useState<ItunesResult | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [manualPlayNeeded, setManualPlayNeeded] = useState(false)
   const [noPreview, setNoPreview] = useState(false)
+
+  // ── 댓글 상태 ──
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
+
+  // 모달 오픈 시 댓글 로드
+  useEffect(() => {
+    setCommentsLoading(true)
+    fetch(`${import.meta.env.VITE_API_URL}/api/playlists/${playlist.id}/comments`)
+      .then((r) => r.json() as Promise<{ comments: Comment[] }>)
+      .then(({ comments }) => setComments(comments))
+      .catch(() => {})
+      .finally(() => setCommentsLoading(false))
+  }, [playlist.id])
+
+  async function handleSubmitComment() {
+    const content = commentText.trim()
+    if (!content || commentSubmitting) return
+    setCommentSubmitting(true)
+    try {
+      const res = await client.post<{ comment: Comment }>(
+        `/api/playlists/${playlist.id}/comments`,
+        { content },
+      )
+      setComments((prev) => [...prev, res.data.comment])
+      setCommentText('')
+    } catch {
+      // 에러 시 조용히 실패 (입력창 내용 유지)
+    } finally {
+      setCommentSubmitting(false)
+    }
+  }
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -339,6 +382,100 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
               </div>
             </section>
           )}
+
+          {/* 댓글 섹션 */}
+          <section>
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+              <span className="text-gray-400">💬</span> 댓글
+              {comments.length > 0 && (
+                <span className="text-xs font-normal text-gray-500">({comments.length})</span>
+              )}
+            </h3>
+
+            {/* 댓글 입력 */}
+            {firebaseUser ? (
+              <div className="mb-4 flex gap-2">
+                <img
+                  src={firebaseUser.photoURL ?? ''}
+                  alt={firebaseUser.displayName ?? ''}
+                  className="h-7 w-7 shrink-0 rounded-full ring-1 ring-white/10"
+                />
+                <div className="flex flex-1 gap-2">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void handleSubmitComment()
+                      }
+                    }}
+                    placeholder="댓글을 입력하세요..."
+                    maxLength={300}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.08]"
+                  />
+                  <button
+                    onClick={() => void handleSubmitComment()}
+                    disabled={!commentText.trim() || commentSubmitting}
+                    className="shrink-0 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {commentSubmitting ? '...' : '등록'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mb-4 text-xs text-gray-600">로그인 후 댓글을 작성하세요.</p>
+            )}
+
+            {/* 댓글 목록 */}
+            {commentsLoading ? (
+              <div className="space-y-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex gap-2">
+                    <div className="h-7 w-7 shrink-0 animate-pulse rounded-full bg-white/10" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 w-20 animate-pulse rounded bg-white/10" />
+                      <div className="h-3 w-3/4 animate-pulse rounded bg-white/10" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : comments.length === 0 ? (
+              <p className="text-xs text-gray-600">첫 번째 댓글을 남겨보세요.</p>
+            ) : (
+              <div className="space-y-3">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-2">
+                    {comment.user.photoUrl ? (
+                      <img
+                        src={comment.user.photoUrl}
+                        alt={comment.user.displayName}
+                        className="h-7 w-7 shrink-0 rounded-full ring-1 ring-white/10"
+                      />
+                    ) : (
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs text-gray-400">
+                        👤
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-medium text-gray-300">
+                          {comment.user.displayName}
+                        </span>
+                        <span className="text-[10px] text-gray-600">
+                          {new Date(comment.createdAt).toLocaleDateString('ko-KR')}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-gray-400">
+                        {comment.content}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>

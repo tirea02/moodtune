@@ -37,6 +37,14 @@ export interface SavedPlaylist {
   isBookmarked?: boolean
 }
 
+/** GET /api/playlists/:id/comments 응답 항목 */
+export interface Comment {
+  id: number
+  content: string
+  createdAt: string
+  user: { id: string; displayName: string; photoUrl: string | null }
+}
+
 export interface Track {
   id: string
   title: string
