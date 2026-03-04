@@ -53,7 +53,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
   const tracks = playlist.tracks as Track[]
   const videos = playlist.videos as Video[]
 
-  const { firebaseUser } = useAuth()
+  const { firebaseUser, dbUser } = useAuth()
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // ── 오디오 상태 ──
@@ -79,6 +79,15 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
       .catch(() => {})
       .finally(() => setCommentsLoading(false))
   }, [playlist.id])
+
+  async function handleDeleteComment(commentId: number) {
+    try {
+      await client.delete(`/api/playlists/${playlist.id}/comments/${commentId}`)
+      setComments((prev) => prev.filter((c) => c.id !== commentId))
+    } catch {
+      // 에러 시 조용히 실패
+    }
+  }
 
   async function handleSubmitComment() {
     const content = commentText.trim()
@@ -446,7 +455,7 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
             ) : (
               <div className="space-y-3">
                 {comments.map((comment) => (
-                  <div key={comment.id} className="flex gap-2">
+                  <div key={comment.id} className="group flex gap-2">
                     {comment.user.photoUrl ? (
                       <img
                         src={comment.user.photoUrl}
@@ -466,6 +475,15 @@ export default function PlaylistModal({ playlist, onClose }: Props) {
                         <span className="text-[10px] text-gray-600">
                           {new Date(comment.createdAt).toLocaleDateString('ko-KR')}
                         </span>
+                        {/* 본인 댓글만 삭제 버튼 표시 */}
+                        {dbUser && String(comment.user.id) === String(dbUser.id) && (
+                          <button
+                            onClick={() => void handleDeleteComment(comment.id)}
+                            className="ml-auto text-[10px] text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-rose-400"
+                          >
+                            삭제
+                          </button>
+                        )}
                       </div>
                       <p className="mt-0.5 text-xs leading-relaxed text-gray-400">
                         {comment.content}
