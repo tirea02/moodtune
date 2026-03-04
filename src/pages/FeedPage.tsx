@@ -92,9 +92,13 @@ export default function FeedPage() {
   // 좋아요/북마크 optimistic 상태 (카드 ID 기준)
   const [interactions, setInteractions]   = useState<Record<number, Interaction>>({})
 
+  // 토스트 메시지
+  const [toast, setToast] = useState<string | null>(null)
+
   // Refs
   const sentinelRef         = useRef<HTMLDivElement>(null)
   const debounceRef         = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toastTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageRef             = useRef(1)       // 현재 로드된 페이지 (state 불필요)
   const fetchIdRef          = useRef(0)       // stale 응답 무시용
   const committedRef        = useRef<Record<number, Interaction>>({})    // 서버 확인된 상태
@@ -103,6 +107,13 @@ export default function FeedPage() {
   const bookmarkTimersRef   = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
   const hasMore = playlists.length < total
+
+  // 3초 후 자동 소멸하는 토스트 표시
+  function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast(msg)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
+  }
 
   // ── 검색어 debounce (300ms) ──────────────────────
   useEffect(() => {
@@ -236,7 +247,7 @@ export default function FeedPage() {
           : await client.delete(`/api/playlists/${pl.id}/like`)
         committedRef.current[pl.id] = { ...committed, liked: latest.liked, likeCount: latest.likeCount }
       } catch {
-        // rollback to committed
+        // rollback to committed + 사용자 피드백
         const rb = committedRef.current[pl.id]
         if (!rb) return
         interactionsRef.current[pl.id] = { ...interactionsRef.current[pl.id], liked: rb.liked, likeCount: rb.likeCount }
@@ -244,6 +255,7 @@ export default function FeedPage() {
           ...prev,
           [pl.id]: { ...prev[pl.id], liked: rb.liked, likeCount: rb.likeCount },
         }))
+        showToast('좋아요 처리에 실패했어요. 잠시 후 다시 시도해주세요.')
       }
     }, 300)
   }
@@ -273,7 +285,7 @@ export default function FeedPage() {
           : await client.delete(`/api/playlists/${pl.id}/bookmark`)
         committedRef.current[pl.id] = { ...committed, bookmarked: latest.bookmarked }
       } catch {
-        // rollback to committed
+        // rollback to committed + 사용자 피드백
         const rb = committedRef.current[pl.id]
         if (!rb) return
         interactionsRef.current[pl.id] = { ...interactionsRef.current[pl.id], bookmarked: rb.bookmarked }
@@ -281,6 +293,7 @@ export default function FeedPage() {
           ...prev,
           [pl.id]: { ...prev[pl.id], bookmarked: rb.bookmarked },
         }))
+        showToast('북마크 처리에 실패했어요. 잠시 후 다시 시도해주세요.')
       }
     }, 300)
   }
@@ -531,6 +544,13 @@ export default function FeedPage() {
           playlist={selectedPlaylist}
           onClose={() => setSelectedPlaylist(null)}
         />
+      )}
+
+      {/* 토스트 메시지 — 모바일 탭바 위, 데스크탑 하단 */}
+      {toast && (
+        <div className="fixed bottom-20 sm:bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-white/10 bg-gray-900/95 px-4 py-2.5 text-xs text-gray-200 shadow-xl backdrop-blur-sm">
+          {toast}
+        </div>
       )}
     </div>
   )
