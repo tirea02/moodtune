@@ -458,6 +458,11 @@ export default function FeedPage() {
                         >
                           {ia.bookmarked ? '🔖' : '🔗'}
                         </button>
+                        {/* 댓글 수 */}
+                        <span className="flex items-center gap-1 text-xs text-gray-500">
+                          <span>💬</span>
+                          <span>{pl.commentCount ?? 0}</span>
+                        </span>
                       </div>
                       <span className="text-xs text-gray-600">{formatDate(pl.createdAt)}</span>
                     </div>

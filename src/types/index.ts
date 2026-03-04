@@ -35,6 +35,8 @@ export interface SavedPlaylist {
   /** 로그인 유저 전용 — GET /api/playlists 에서 optional 반환 */
   isLiked?: boolean
   isBookmarked?: boolean
+  /** GET /api/playlists, GET /api/search 에서 반환 */
+  commentCount?: number
 }
 
 /** GET /api/playlists/:id/comments 응답 항목 */
