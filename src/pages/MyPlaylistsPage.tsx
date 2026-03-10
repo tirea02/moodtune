@@ -113,7 +113,7 @@ export default function MyPlaylistsPage() {
         const res = await client.get<{ playlists: SavedPlaylist[] }>('/api/playlists/my')
         setPlaylists(res.data.playlists)
       } catch {
-        setFetchError('플레이리스트를 불러오지 못했어요. 다시 시도해줘.')
+        setFetchError('플레이리스트를 불러오지 못했어요. 다시 시도해주세요.')
       } finally {
         setFetching(false)
       }
@@ -133,7 +133,7 @@ export default function MyPlaylistsPage() {
         const res = await client.get<{ bookmarks: Array<{ playlist: SavedPlaylist }> }>('/api/bookmarks')
         setBookmarks(res.data.bookmarks.map((b) => b.playlist))
       } catch {
-        setBookmarkError('북마크를 불러오지 못했어요. 다시 시도해줘.')
+        setBookmarkError('북마크를 불러오지 못했어요. 다시 시도해주세요.')
       } finally {
         setBookmarkFetching(false)
       }

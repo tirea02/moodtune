@@ -375,7 +375,7 @@ export default function FeedPage() {
                 key={s}
                 onClick={() => { setSort(s); setSearchInput(''); setDebouncedSearch('') }}
                 className={`rounded-lg border px-3 py-1.5 text-xs transition-all ${
-                  sort === s && !debouncedSearch
+                  sort === s
                     ? 'border-violet-500/50 bg-violet-500/15 text-violet-300'
                     : 'border-white/10 bg-white/5 text-gray-500 hover:text-gray-300'
                 }`}
