@@ -78,8 +78,14 @@ function PlaylistCard({ pl, onClick }: { pl: SavedPlaylist; onClick: () => void 
         </div>
       )}
 
-      {/* 저장일 */}
-      <p className="text-right text-xs text-gray-600">{formatDate(pl.createdAt)}</p>
+      {/* 댓글 수 · 저장일 */}
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1 text-xs text-gray-500">
+          <span>💬</span>
+          <span>{pl.commentCount ?? 0}</span>
+        </span>
+        <p className="text-xs text-gray-600">{formatDate(pl.createdAt)}</p>
+      </div>
     </div>
   )
 }
