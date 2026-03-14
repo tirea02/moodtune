@@ -1,7 +1,13 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+/**
+ * Gemini 감정 분석 — 백엔드 프록시를 통해 호출
+ *
+ * 데이터 흐름:
+ *   analyzeMood(mood) → POST /api/proxy/analyze → 서버가 Gemini API 호출 → GeminiResult 반환
+ *
+ * GEMINI_API_KEY는 서버 환경변수에서만 사용 (프론트 번들 미포함)
+ */
+import client from './client'
 import type { Track } from '../types'
-
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
 
 export interface GeminiResult {
   analysis: string
@@ -10,38 +16,6 @@ export interface GeminiResult {
 }
 
 export async function analyzeMood(mood: string): Promise<GeminiResult> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
-  const prompt = `You are a music recommendation AI. Analyze the user's mood and recommend music.
-
-User's mood/situation: "${mood}"
-
-Respond ONLY with valid JSON (no markdown, no code blocks, no explanation):
-{
-  "analysis": "한국어로 작성한 감성 분석 (1-2문장, 따뜻하고 공감하는 톤으로)",
-  "tracks": [
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" },
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" },
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" },
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" },
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" },
-    { "title": "Song Title", "artist": "Artist Name", "genre": "Genre" }
-  ],
-  "videoQueries": [
-    "YouTube search query 1",
-    "YouTube search query 2",
-    "YouTube search query 3",
-    "YouTube search query 4"
-  ]
-}
-
-Recommend 6 diverse tracks that match the mood. VideoQueries should be specific YouTube search terms for playlists or mixes matching the mood (mix Korean and English queries naturally).`
-
-  const result = await model.generateContent(prompt)
-  const text = result.response.text()
-
-  // Gemini가 markdown 코드블록으로 감쌀 경우 제거
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-
-  return JSON.parse(cleaned) as GeminiResult
+  const res = await client.post<GeminiResult>('/api/proxy/analyze', { mood })
+  return res.data
 }
