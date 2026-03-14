@@ -29,3 +29,4 @@ dist-ssr
 *.sw?
 
 debug-report.md
+bug-reports/
